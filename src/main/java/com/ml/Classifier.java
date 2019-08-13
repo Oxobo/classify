@@ -1,19 +1,21 @@
 package com.ml;
 
-import com.model.ModelClassifier;
 import com.model.ModelGenerator;
-import weka.classifiers.functions.MultilayerPerceptron;
+import com.pso.PsoClassifier;
+import weka.attributeSelection.*;
 import weka.core.Debug;
 import weka.core.Instances;
 import weka.filters.Filter;
 import weka.filters.unsupervised.attribute.Normalize;
+import weka.filters.unsupervised.attribute.NumericToNominal;
+import weka.filters.unsupervised.attribute.ReplaceMissingValues;
 
 
 public class Classifier {
 
 
-        public static final String DATASETPATH = "/Users/Emaraic/Temp/ml/iris.2D.arff";
-        public static final String MODElPATH = "/Users/Emaraic/Temp/ml/model.bin";
+        public static final String DATASETPATH = "UCI-Lung-Cancer-DataSet.arff";
+        public static final String MODElPATH = "model.bin";
 
         public static void main(String[] args) throws Exception {
 
@@ -21,35 +23,53 @@ public class Classifier {
 
             Instances dataset = mg.loadDataset(DATASETPATH);
 
-            Filter filter = new Normalize();
+            //Missing Values
+            ReplaceMissingValues replaceMissingValues = new ReplaceMissingValues();
+            replaceMissingValues.setInputFormat(dataset);
+            dataset = Filter.useFilter(dataset, replaceMissingValues);
 
-            // divide dataset to train dataset 80% and test dataset 20%
-            int trainSize = (int) Math.round(dataset.numInstances() * 0.8);
-            int testSize = dataset.numInstances() - trainSize;
+            //NumericToNominal
+            NumericToNominal toNominalFilter = new NumericToNominal();
+            toNominalFilter.setInputFormat(dataset);
+            dataset = Filter.useFilter(dataset, toNominalFilter);
+
+            AttributeSelection attributeSelection = new AttributeSelection();
+            ASEvaluation subsetEval = new CfsSubsetEval();
+
+            ASSearch gSearch = new GreedyStepwise();
+            attributeSelection.setEvaluator(subsetEval);
+            attributeSelection.setSearch(gSearch);
 
             dataset.randomize(new Debug.Random(1));// if you comment this line the accuracy of the model will be droped from 96.6% to 80%
 
-            //Normalize dataset
-            filter.setInputFormat(dataset);
-            Instances datasetnor = Filter.useFilter(dataset, filter);
+            // divide dataset to train dataset 80% and test dataset 20%
+            int trainSize = (int) Math.round(dataset.numInstances() * 0.75);
+            int testSize = dataset.numInstances() - trainSize;
 
-            Instances traindataset = new Instances(datasetnor, 0, trainSize);
-            Instances testdataset = new Instances(datasetnor, trainSize, testSize);
+
+            //feature reduction
+            attributeSelection.SelectAttributes(dataset);
+            Instances featureReducedData = attributeSelection.reduceDimensionality(dataset);
+
+            //Normalize dataset
+            Filter filter = new Normalize();
+            filter.setInputFormat(featureReducedData);
+            Instances normalDataset = Filter.useFilter(featureReducedData, filter);
+
+            Instances traindataset = new Instances(normalDataset, 0, trainSize);
+            Instances testdataset = new Instances(normalDataset, trainSize, testSize);
 
             // build classifier with train dataset
-            MultilayerPerceptron ann = (MultilayerPerceptron) mg.buildClassifier(traindataset);
+            PsoClassifier ann = (PsoClassifier) mg.buildClassifier(traindataset);
 
             // Evaluate classifier with test dataset
             String evalsummary = mg.evaluateModel(ann, traindataset, testdataset);
             System.out.println("Evaluation: " + evalsummary);
+            System.out.println(evalsummary);
 
             //Save model
             mg.saveModel(ann, MODElPATH);
 
-            //classifiy a single instance
-            ModelClassifier cls = new ModelClassifier();
-            String classname =cls.classifiy(Filter.useFilter(cls.createInstance(1.6, 0.2, 0), filter), MODElPATH);
-            System.out.println("\n The class name for the instance with petallength = 1.6 and petalwidth =0.2 is  " +classname);
 
         }
 
